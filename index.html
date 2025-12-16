@@ -748,6 +748,16 @@
                 </table>
             </div>
         </main>
+         <!-- INTELLIGENT QUERY INTERFACE -->
+ <div style="position: fixed; bottom: 20px; right: 20px; width: 400px; background: white; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); z-index: 1000; padding: 20px; font-family: 'Segoe UI', Roboto, sans-serif;">
+  <div style="margin-bottom: 12px;">
+   <h3 style="margin: 0 0 8px 0; color: #0d47a1; font-size: 16px;">📊 Ask About GTCI Data</h3>
+   <input type="text" id="intelligentQueryInput" placeholder="e.g., What's the score for indicator 1.1.1?" style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 13px; box-sizing: border-box;" onkeypress="if(event.key==='Enter') handleQuerySubmit();">
+   <button onclick="handleQuerySubmit()" style="width: 100%; margin-top: 8px; padding: 10px; background: #1976d2; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">Search</button>
+  </div>
+  <div id="queryResponseBox" style="background: #f5f5f5; border-radius: 6px; padding: 12px; min-height: 40px; font-size: 12px; color: #333; line-height: 1.5; max-height: 300px; overflow-y: auto;">Ready to answer your questions...</div>
+  <div style="margin-top: 8px; font-size: 10px; color: #999;" onclick="this.parentElement.style.display='none'; event.stopPropagation();" style="cursor: pointer;">✕ Close</div>
+ </div>
     </div>
 
     <script>
@@ -1546,6 +1556,115 @@
         renderInputs();
         updateDashboard();
         updateRank();
+        
+ // ===== INTELLIGENT QUERY ENGINE =====
+ function parseQuery(query) {
+   query = query.toLowerCase().trim();
+   const patterns = {
+     indicatorScore: /score|value|1\.[0-9]|2\.[0-9]|3\.[0-9]|4\.[0-9]|5\.[0-9]|6\.[0-9]/i,
+     pillarScore: /enable|attract|grow|retain|vocational|global knowledge/i,
+     improved: /improve|increase|better|gain|up/i,
+     declined: /declin|decrease|worse|loss|down/i,
+     comparison: /compare|vs|change/i,
+     summary: /summary|overview|status|dashboard/i,
+     missingData: /missing|null|n\/a|zero|available/i
+   };
+   const intent = Object.keys(patterns).find(key => patterns[key].test(query));
+   const codeMatch = query.match(/([0-9]+\.[0-9]+\.[0-9]+|[0-9]+\.[0-9]+)/);
+   const code = codeMatch ? codeMatch[1] : null;
+   const pillars = ['enable', 'attract', 'grow', 'retain', 'vocational', 'global knowledge', 'skills'];
+   const pillar = pillars.find(p => query.includes(p));
+   return { intent, code, pillar, originalQuery: query };
+ }
+ 
+ function generateResponse(parseResult) {
+   const { intent, code, pillar } = parseResult;
+   let response = '';
+   try {
+     if (intent === 'indicatorScore' && code) {
+       const indicator = indicators.find(i => i.code === code);
+       if (indicator) {
+         response = `<strong>Indicator ${code}: ${indicator.name}</strong><br>`;
+         response += `Pillar: ${indicator.pillar}<br>`;
+         response += `2023 Score: ${indicator.score2023 !== null ? indicator.score2023 : 'N/A'}<br>`;
+         response += `2025 Score: ${indicator.score2025 !== null ? indicator.score2025 : 'N/A'}<br>`;
+         if (indicator.score2023 !== null && indicator.score2025 !== null) {
+           const diff = (indicator.score2025 - indicator.score2023).toFixed(2);
+           const trend = diff > 0 ? ' ↑ Improved' : diff < 0 ? ' ↓ Declined' : ' → Stable';
+           response += `Change: ${diff}${trend}<br>`;
+         }
+         response += `Data Owner: ${indicator.dataOwner || 'N/A'}`;
+       } else {
+         response = `No indicator found with code ${code}`;
+       }
+     } else if (intent === 'pillarScore' && pillar) {
+       const fullPillar = pillar.includes('vocational') ? 'Vocational & Technical Skills' : pillar.includes('global') ? 'Global Knowledge Skills' : pillar.charAt(0).toUpperCase() + pillar.slice(1);
+       const pillarObj = pillarDataStructure.find(p => p.name === fullPillar);
+       if (pillarObj) {
+         response = `<strong>${fullPillar}</strong><br>`;
+         response += `2023 - Score: ${pillarObj.score2023}, Rank: ${pillarObj.rank2023}<br>`;
+         response += `2025 - Score: ${pillarObj.score2025}, Rank: ${pillarObj.rank2025}<br>`;
+         const diff = (pillarObj.score2025 - pillarObj.score2023).toFixed(2);
+         const trend = diff > 0 ? ' ↑ Improved' : diff < 0 ? ' ↓ Declined' : ' → Stable';
+         response += `Change: ${diff}${trend}`;
+       } else {
+         response = `Pillar "${pillar}" not found`;
+       }
+     } else if (intent === 'improved') {
+       const improvedInds = indicators.filter(i => i.score2025 !== null && i.score2023 !== null && (i.score2025 - i.score2023) > 0).slice(0, 5);
+       response = `<strong>Top 5 Improved Indicators:</strong><br>`;
+       improvedInds.forEach(ind => {
+         const diff = (ind.score2025 - ind.score2023).toFixed(2);
+         response += `${ind.code} - ${ind.name}: +${diff}<br>`;
+       });
+       response += `Total improved: ${improvedInds.length}`;
+     } else if (intent === 'declined') {
+       const declinedInds = indicators.filter(i => i.score2025 !== null && i.score2023 !== null && (i.score2025 - i.score2023) < 0).slice(0, 5);
+       response = `<strong>Top 5 Declined Indicators:</strong><br>`;
+       declinedInds.forEach(ind => {
+         const diff = (ind.score2025 - ind.score2023).toFixed(2);
+         response += `${ind.code} - ${ind.name}: ${diff}<br>`;
+       });
+       response += `Total declined: ${declinedInds.length}`;
+     } else if (intent === 'comparison') {
+       response = `<strong>2023 vs 2025 Comparison</strong><br>`;
+       response += `Global Rank: 41 → 43 (↓ -2)<br>`;
+       response += `Global Score: 51.74 → 51.48 (↓ -0.26)<br>`;
+       response += `Improved Indicators: 27<br>`;
+       response += `Declined Indicators: 35<br>`;
+       response += `Missing/Zero Data: 15`;
+     } else if (intent === 'missingData') {
+       const missingInds = indicators.filter(i => i.score2025 === null || i.score2025 === 0).slice(0, 8);
+       response = `<strong>Indicators with Missing 2025 Data (${missingInds.length} shown):</strong><br>`;
+       missingInds.forEach(ind => {
+         response += `${ind.code} - ${ind.name}<br>`;
+       });
+     } else if (intent === 'summary') {
+       response = `<strong>GTCI Dashboard Summary</strong><br>`;
+       response += `Global Rank: 41 (2023) → 43 (2025)<br>`;
+       response += `Global Score: 51.74 → 51.48<br>`;
+       response += `6 Pillars Tracked<br>`;
+       response += `83 Total Indicators<br>`;
+       response += `Improved: 27 | Declined: 35 | Missing: 15`;
+     } else {
+       response = `Try asking:<br>• What's the score for indicator 1.1.1?<br>• How is the Enable pillar performing?<br>• Show improved indicators<br>• Which indicators declined?<br>• Compare 2023 vs 2025<br>• Show missing data<br>• Dashboard summary`;
+     }
+   } catch (e) {
+     response = `Error: ${e.message}`;
+   }
+   return response;
+ }
+ 
+ function handleQuerySubmit() {
+   const queryInput = document.getElementById('intelligentQueryInput');
+   const query = queryInput.value.trim();
+   if (!query) return;
+   const responseBox = document.getElementById('queryResponseBox');
+   const parseResult = parseQuery(query);
+   const response = generateResponse(parseResult);
+   responseBox.innerHTML = response;
+   queryInput.value = '';
+ }
 
     </script>
 
