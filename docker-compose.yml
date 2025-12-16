@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  gtci-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bn-gtci-dashboard
+    ports:
+      - "8080:80"
+    environment:
+      - TZ=Asia/Brunei
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./CNAME:/usr/share/nginx/html/CNAME:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - gtci-net
+    labels:
+      - "com.example.description=BN GTCI Dashboard"
+      - "com.example.version=2.0"
+
+networks:
+  gtci-net:
+    driver: bridge
