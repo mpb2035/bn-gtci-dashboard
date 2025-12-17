@@ -6,7 +6,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GTCI Comparison Dashboard | Brunei Darussalam</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
   <style>
@@ -39,15 +38,15 @@
     th, td { padding: 0.8rem; text-align: left; border-bottom: 1px solid var(--border-color); }
     th { background: #f5f5f5; font-weight: 600; }
     .pdf-controls { background: white; padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; gap: 1rem; justify-content: center; align-items: center; margin-bottom: 1rem; border-radius: 4px; }
-    .pdf-viewer { background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: auto; min-height: 600px; }
-    #pdfCanvas { max-width: 100%; max-height: 100%; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .pdf-viewer { background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: auto; min-height: 600px; width: 100%; }
+    iframe { width: 100%; height: 100%; border: none; border-radius: 4px; }
     button { padding: 0.6rem 1.2rem; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; background: var(--secondary-color); color: white; transition: all 0.2s; }
     button:hover { background: var(--primary-color); }
     .rank-display { background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)); color: white; padding: 2rem; border-radius: 8px; margin-bottom: 2rem; display: flex; justify-content: space-around; }
     .rank-card { text-align: center; }
     .rank-card .number { font-size: 2.5rem; font-weight: bold; }
     .rank-card .label { font-size: 0.9rem; opacity: 0.9; }
-    .pdf-error { color: #c62828; padding: 2rem; text-align: center; }
+    .pdf-message { text-align: center; padding: 2rem; color: #666; }
   </style>
 </head>
 <body>
@@ -99,13 +98,13 @@
       <!-- PDF Viewer Tab -->
       <div id="pdf" class="tab-content">
         <div class="pdf-controls">
-          <button onclick="prevPage()">← Previous</button>
-          <span id="pageInfo" style="font-weight:600; min-width:120px; text-align:center;">Page 1 of 1</span>
-          <button onclick="nextPage()">Next →</button>
-          <button onclick="downloadPDF()">⬇ Download</button>
+          <button onclick="downloadPDF()">⬇ Download PDF</button>
+          <a href="https://raw.githubusercontent.com/mpb2035/bn-gtci-dashboard/test-branch/2025%20Brunei%20GTCI%20Ranking%20(1).pdf" target="_blank" style="text-decoration: none;">
+            <button>🔗 Open in New Tab</button>
+          </a>
         </div>
         <div class="pdf-viewer">
-          <canvas id="pdfCanvas"></canvas>
+          <iframe id="pdfFrame" src="https://docs.google.com/gview?url=https://raw.githubusercontent.com/mpb2035/bn-gtci-dashboard/test-branch/2025%20Brunei%20GTCI%20Ranking%20(1).pdf&embedded=true"></iframe>
         </div>
       </div>
     </div>
@@ -113,14 +112,7 @@
 
   <script>
     let currentTab = 'dashboard';
-    let pdfDoc = null;
-    let pageNum = 1;
-    let pageRendering = false;
-    let pageNumPending = null;
     let pillarChart = null;
-
-    // PDF URL with proper encoding
-    const PDF_URL = 'https://raw.githubusercontent.com/mpb2035/bn-gtci-dashboard/test-branch/2025%20Brunei%20GTCI%20Ranking%20(1).pdf';
 
     // Tab Switching
     function switchTab(tab) {
@@ -131,9 +123,6 @@
       event.target.classList.add('active');
       currentTab = tab;
 
-      if (tab === 'pdf' && !pdfDoc) {
-        setTimeout(() => loadPDF(), 200);
-      }
       if (tab === 'dashboard' && !pillarChart) {
         setTimeout(() => renderChart(), 300);
       }
@@ -157,67 +146,10 @@
       });
     }
 
-    // PDF Functions
-    function loadPDF() {
-      const pdfjsWorker = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-
-      // Try loading with fetch first to check if file is accessible
-      fetch(PDF_URL, { method: 'HEAD' })
-        .then(response => {
-          if (!response.ok) throw new Error('PDF not found');
-          return pdfjsLib.getDocument(PDF_URL).promise;
-        })
-        .then(pdf => {
-          pdfDoc = pdf;
-          document.getElementById('pageInfo').textContent = 'Page 1 of ' + pdf.numPages;
-          renderPage(1);
-        })
-        .catch(err => {
-          console.error('PDF loading error:', err);
-          document.querySelector('.pdf-viewer').innerHTML = '<div class="pdf-error"><p>⚠ PDF file not found or cannot be loaded.</p><p>Ensure the PDF file exists in the repository.</p><p style="font-size:0.9rem; margin-top:1rem;">Error: ' + err.message + '</p></div>';
-        });
-    }
-
-    function renderPage(num) {
-      if (!pdfDoc || pageRendering) return;
-      pageRendering = true;
-
-      pdfDoc.getPage(num).then(page => {
-        const canvas = document.getElementById('pdfCanvas');
-        const ctx = canvas.getContext('2d');
-        const viewport = page.getViewport({ scale: 1.5 });
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-
-        page.render({ canvasContext: ctx, viewport }).promise.then(() => {
-          pageRendering = false;
-          if (pageNumPending !== null) { renderPage(pageNumPending); pageNumPending = null; }
-        });
-      }).catch(err => {
-        console.error('Page render error:', err);
-      });
-
-      document.getElementById('pageInfo').textContent = 'Page ' + num + ' of ' + pdfDoc.numPages;
-    }
-
-    function nextPage() {
-      if (pageNum < pdfDoc.numPages) {
-        pageNum++;
-        pageRendering ? pageNumPending = pageNum : renderPage(pageNum);
-      }
-    }
-
-    function prevPage() {
-      if (pageNum > 1) {
-        pageNum--;
-        pageRendering ? pageNumPending = pageNum : renderPage(pageNum);
-      }
-    }
-
+    // PDF Download
     function downloadPDF() {
       const link = document.createElement('a');
-      link.href = PDF_URL;
+      link.href = 'https://raw.githubusercontent.com/mpb2035/bn-gtci-dashboard/test-branch/2025%20Brunei%20GTCI%20Ranking%20(1).pdf';
       link.download = 'GTCI_2025_Brunei.pdf';
       link.click();
     }
