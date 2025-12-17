@@ -10,7 +10,16 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
   <style>
-    :root { --primary-color: #0d47a1; --secondary-color: #1976d2; --accent-color: #42a5f5; --bg-color: #f4f6f8; --card-bg: #ffffff; --text-color: #333; --border-color: #e0e0e0; }
+    :root {
+      --primary-color: #0d47a1;
+      --secondary-color: #1976d2;
+      --accent-color: #42a5f5;
+      --bg-color: #f4f6f8;
+      --card-bg: #ffffff;
+      --text-color: #333;
+      --border-color: #e0e0e0;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
     body { background-color: var(--bg-color); color: var(--text-color); min-height: 100vh; display: flex; flex-direction: column; }
     header { background-color: var(--primary-color); color: white; padding: 0.8rem 1.5rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 100; }
@@ -38,6 +47,7 @@
     .rank-card { text-align: center; }
     .rank-card .number { font-size: 2.5rem; font-weight: bold; }
     .rank-card .label { font-size: 0.9rem; opacity: 0.9; }
+    .pdf-error { color: #c62828; padding: 2rem; text-align: center; }
   </style>
 </head>
 <body>
@@ -67,7 +77,7 @@
           <div class="rank-card"><div class="number" id="scoreDisplay23">51.74</div><div class="label">2023 Score</div></div>
           <div class="rank-card"><div class="number" id="scoreDisplay25">51.48</div><div class="label">2025 Score</div></div>
         </div>
-        
+
         <div class="chart-container">
           <h3>Score Comparison by Pillar</h3>
           <canvas id="pillarChart"></canvas>
@@ -109,15 +119,18 @@
     let pageNumPending = null;
     let pillarChart = null;
 
+    // PDF URL with proper encoding
+    const PDF_URL = 'https://raw.githubusercontent.com/mpb2035/bn-gtci-dashboard/test-branch/2025%20Brunei%20GTCI%20Ranking%20(1).pdf';
+
     // Tab Switching
     function switchTab(tab) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-      
+
       document.getElementById(tab).classList.add('active');
       event.target.classList.add('active');
       currentTab = tab;
-      
+
       if (tab === 'pdf' && !pdfDoc) {
         setTimeout(() => loadPDF(), 200);
       }
@@ -130,7 +143,7 @@
     function renderChart() {
       const ctx = document.getElementById('pillarChart');
       if (!ctx || pillarChart) return;
-      
+
       pillarChart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -146,41 +159,65 @@
 
     // PDF Functions
     function loadPDF() {
-      const pdfPath = 'https://raw.githubusercontent.com/mpb2035/bn-gtci-dashboard/test-branch/2025%20Brunei%20GTCI%20Ranking%20(1).pdf';
       const pdfjsWorker = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-      
-      pdfjsLib.getDocument(pdfPath).promise.then(pdf => {
-        pdfDoc = pdf;
-        document.getElementById('pageInfo').textContent = 'Page 1 of ' + pdf.numPages;
-        renderPage(1);
-      }).catch(err => {
-        document.querySelector('.pdf-viewer').innerHTML = '<p style="color:#c62828; padding:2rem;">⚠ PDF file not found or cannot be loaded. Ensure the file is in the repository.</p>';
-      });
+
+      // Try loading with fetch first to check if file is accessible
+      fetch(PDF_URL, { method: 'HEAD' })
+        .then(response => {
+          if (!response.ok) throw new Error('PDF not found');
+          return pdfjsLib.getDocument(PDF_URL).promise;
+        })
+        .then(pdf => {
+          pdfDoc = pdf;
+          document.getElementById('pageInfo').textContent = 'Page 1 of ' + pdf.numPages;
+          renderPage(1);
+        })
+        .catch(err => {
+          console.error('PDF loading error:', err);
+          document.querySelector('.pdf-viewer').innerHTML = '<div class="pdf-error"><p>⚠ PDF file not found or cannot be loaded.</p><p>Ensure the PDF file exists in the repository.</p><p style="font-size:0.9rem; margin-top:1rem;">Error: ' + err.message + '</p></div>';
+        });
     }
 
     function renderPage(num) {
       if (!pdfDoc || pageRendering) return;
       pageRendering = true;
+
       pdfDoc.getPage(num).then(page => {
         const canvas = document.getElementById('pdfCanvas');
         const ctx = canvas.getContext('2d');
-        const viewport = page.getViewport({scale: 1.5});
+        const viewport = page.getViewport({ scale: 1.5 });
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        page.render({canvasContext: ctx, viewport}).promise.then(() => {
+
+        page.render({ canvasContext: ctx, viewport }).promise.then(() => {
           pageRendering = false;
           if (pageNumPending !== null) { renderPage(pageNumPending); pageNumPending = null; }
         });
+      }).catch(err => {
+        console.error('Page render error:', err);
       });
+
       document.getElementById('pageInfo').textContent = 'Page ' + num + ' of ' + pdfDoc.numPages;
     }
 
-    function nextPage() { if (pageNum < pdfDoc.numPages) { pageNum++; pageRendering ? pageNumPending = pageNum : renderPage(pageNum); } }
-    function prevPage() { if (pageNum > 1) { pageNum--; pageRendering ? pageNumPending = pageNum : renderPage(pageNum); } }
+    function nextPage() {
+      if (pageNum < pdfDoc.numPages) {
+        pageNum++;
+        pageRendering ? pageNumPending = pageNum : renderPage(pageNum);
+      }
+    }
+
+    function prevPage() {
+      if (pageNum > 1) {
+        pageNum--;
+        pageRendering ? pageNumPending = pageNum : renderPage(pageNum);
+      }
+    }
+
     function downloadPDF() {
       const link = document.createElement('a');
-      link.href = 'https://raw.githubusercontent.com/mpb2035/bn-gtci-dashboard/test-branch/2025%20Brunei%20GTCI%20Ranking%20(1).pdf';
+      link.href = PDF_URL;
       link.download = 'GTCI_2025_Brunei.pdf';
       link.click();
     }
